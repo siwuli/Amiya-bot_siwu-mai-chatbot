@@ -2,7 +2,7 @@
 
 基于明日方舟 **阿米娅** 人设的 **AmiyaBot** 群聊智能体插件。被前缀 / `@` / 触发词召唤后像真人一样短聊接话，并且**不抢**其他指令插件；可选开启主动模式，在合适的时机像老群友一样自己接话。
 
-> 插件 id：`siwu-mai-chatbot`　当前版本：`1.9.0`　项目地址：[github.com/siwuli/Amiya-bot_siwu-mai-chatbot](https://github.com/siwuli/Amiya-bot_siwu-mai-chatbot)
+> 插件 id：`siwu-mai-chatbot`　当前版本：`1.9.0`
 
 ## 特性
 
@@ -155,3 +155,7 @@ python build.py
 ## 致谢
 
 本插件在设计与实现上参考了 [MaiBot（麦麦）](https://github.com/Mai-with-u/MaiBot)——一个基于大语言模型、专注于群组聊天的可交互智能体。人设化对话、群聊风格与黑话学习、用户画像与长期记忆等设计思路均受其启发。感谢 MaiBot 项目及其社区的开源贡献（MaiBot 基于 GPL-3.0 许可证开源）。
+
+## 项目地址
+
+<https://github.com/siwuli/Amiya-bot_siwu-mai-chatbot>
