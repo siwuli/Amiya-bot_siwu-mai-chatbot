@@ -1,0 +1,263 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "type": "object",
+  "required": [],
+  "properties": {
+    "mai_api_key": {
+      "title": "DeepSeek API Key",
+      "description": "必填。从 https://platform.deepseek.com 获取",
+      "type": "string"
+    },
+    "mai_model": {
+      "title": "模型",
+      "description": "OpenAI 兼容模型名，按你使用的供应商填写。如 DeepSeek 的 deepseek-chat / deepseek-reasoner，或硅基流动的 deepseek-ai/DeepSeek-V3 等。留空默认 deepseek-chat",
+      "type": "string",
+      "default": "deepseek-chat"
+    },
+    "mai_base_url": {
+      "title": "API 地址",
+      "description": "官方或兼容代理的 base_url",
+      "type": "string",
+      "default": "https://api.deepseek.com"
+    },
+    "mai_judge_enabled": {
+      "title": "启用接话评分",
+      "description": "开启后用轻量模型对每条未召唤消息打 0~100 分，再按分数概率决定是否接话。关闭则回退到固定概率+TimingGate",
+      "type": "boolean",
+      "default": true
+    },
+    "mai_judge_api_key": {
+      "title": "评分模型 API Key",
+      "description": "留空则复用上方主模型 Key。可填更便宜的供应商 Key",
+      "type": "string",
+      "default": ""
+    },
+    "mai_judge_model": {
+      "title": "评分模型",
+      "description": "用于 0~100 接话评分的轻量模型名，建议用便宜/快速的模型",
+      "type": "string",
+      "default": "deepseek-chat"
+    },
+    "mai_judge_base_url": {
+      "title": "评分模型 API 地址",
+      "description": "留空则复用上方主模型 base_url",
+      "type": "string",
+      "default": ""
+    },
+    "mai_embedding_enabled": {
+      "title": "启用向量记忆",
+      "description": "给记忆库加语义检索：写入时生成向量，检索时向量+FTS 混合。DeepSeek 没有 embedding 接口，需另配 OpenAI 兼容 /embeddings 服务（如硅基流动 BAAI/bge-m3、OpenAI text-embedding-3-small）。未配全或服务不可用时自动停用，不影响聊天",
+      "type": "boolean",
+      "default": false
+    },
+    "mai_embedding_api_key": {
+      "title": "Embedding API Key",
+      "description": "留空则复用上方主模型 Key。若主模型是 DeepSeek，此处必须填支持 /embeddings 服务的 Key",
+      "type": "string",
+      "default": ""
+    },
+    "mai_embedding_base_url": {
+      "title": "Embedding API 地址",
+      "description": "留空则复用 mai_base_url。DeepSeek 无 embedding 接口，请填如 https://api.siliconflow.cn/v1 或 https://api.openai.com/v1",
+      "type": "string",
+      "default": ""
+    },
+    "mai_embedding_model": {
+      "title": "Embedding 模型",
+      "description": "留空默认 text-embedding-3-small。如 BAAI/bge-m3、text-embedding-3-small。换模型后维度变化不影响检索（维度不一致自动跳过）",
+      "type": "string",
+      "default": "text-embedding-3-small"
+    },
+    "mai_enabled": {
+      "title": "启用插件",
+      "type": "boolean",
+      "default": true
+    },
+    "mai_proactive": {
+      "title": "允许主动发言",
+      "description": "关闭则只在被前缀/@/触发词召唤且无其他插件响应时回复。开启后未召唤消息也会走接话评分（或旧版概率）",
+      "type": "boolean",
+      "default": false
+    },
+    "mai_proactive_rate": {
+      "title": "主动发言概率(旧)",
+      "description": "仅当「启用接话评分」关闭时生效。0~1，建议 0.05~0.15",
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1,
+      "default": 0.08
+    },
+    "mai_debug_log": {
+      "title": "调试日志",
+      "description": "开启后在控制台输出观察/召唤/评分/概率/兜底/生成等全流程日志，方便排查接话时机",
+      "type": "boolean",
+      "default": true
+    },
+    "mai_bot_name": {
+      "title": "机器人自称",
+      "description": "出现在历史记录与 user 模板 {bot_name} 中，默认「兔兔」",
+      "type": "string",
+      "default": "兔兔"
+    },
+    "mai_trigger_words": {
+      "title": "额外触发词",
+      "description": "阿米娅全局前缀（兔兔/阿米娅等）本身就会召唤。这里可再加自定义词。",
+      "type": "array",
+      "items": {"type": "string"},
+      "default": ["兔兔", "阿米娅"]
+    },
+    "mai_fallback_delay": {
+      "title": "兜底等待(秒)",
+      "description": "等待其他插件认领的时间。通常 1 秒足够，过长会让聊天感觉卡顿。",
+      "type": "number",
+      "minimum": 0.3,
+      "maximum": 5,
+      "default": 1.0
+    },
+    "mai_min_reactive_interval": {
+      "title": "最小主动间隔(秒)",
+      "description": "评分开启时：用作 cooldown_penalty 软扣分衰减窗口（不硬拦）。评分关闭时：旧版 TimingGate 硬间隔",
+      "type": "integer",
+      "minimum": 60,
+      "maximum": 3600,
+      "default": 300
+    },
+    "mai_max_reactive_interval": {
+      "title": "最大主动间隔(秒)",
+      "description": "仅当「启用接话评分」关闭时，旧版 TimingGate 使用",
+      "type": "integer",
+      "minimum": 300,
+      "maximum": 7200,
+      "default": 1800
+    },
+    "mai_llm_fallback": {
+      "title": "主动发言 LLM 决策",
+      "description": "仅评分关闭时：规则不确定是否让 LLM 判断（更耗 token）",
+      "type": "boolean",
+      "default": true
+    },
+    "mai_persona_cooldown_hours": {
+      "title": "画像提取冷却(小时)",
+      "description": "每条消息观察后尝试学习；仅提取成功后进入冷却。失败不锁、不扣样本",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 168,
+      "default": 6
+    },
+    "mai_persona_min_samples": {
+      "title": "画像最少消息数",
+      "description": "内存样本 + 库内近期 chat 合计达到此数才抽取画像",
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 200,
+      "default": 12
+    },
+    "mai_expression_cooldown_hours": {
+      "title": "表达学习冷却(小时)",
+      "description": "群风格学习冷却；观察后异步触发，不依赖是否回复",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 168,
+      "default": 3
+    },
+    "mai_jargon_cooldown_hours": {
+      "title": "黑话学习冷却(小时)",
+      "description": "黑话挖掘冷却。生成时另按当前消息关键词检索相关黑话注入（最多5条）",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 168,
+      "default": 6
+    },
+    "mai_style_min_samples": {
+      "title": "风格学习最少消息数",
+      "description": "群近期消息数达到此值才进行风格/黑话学习",
+      "type": "integer",
+      "minimum": 5,
+      "maximum": 200,
+      "default": 15
+    },
+    "mai_max_context": {
+      "title": "上下文消息数",
+      "description": "生成时引用最近多少条群聊；另注入画像、群说法(4)、检索黑话(0~5)、相关记忆(≤4)",
+      "type": "integer",
+      "minimum": 4,
+      "maximum": 40,
+      "default": 16
+    },
+    "mai_memory_window_hours": {
+      "title": "记忆窗口(小时)",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 720,
+      "default": 168
+    },
+    "mai_max_reply_length": {
+      "title": "回复最大字符数",
+      "type": "integer",
+      "minimum": 20,
+      "maximum": 500,
+      "default": 100
+    },
+    "mai_temperature": {
+      "title": "LLM 温度",
+      "description": "越高越活，建议 0.85~1.05",
+      "type": "number",
+      "minimum": 0,
+      "maximum": 2,
+      "default": 0.95
+    },
+    "mai_max_tokens": {
+      "title": "LLM 最大 tokens",
+      "type": "integer",
+      "minimum": 50,
+      "maximum": 1000,
+      "default": 180
+    },
+    "mai_system_prompt": {
+      "title": "【提示词】人设 system",
+      "description": "决定说话风格的核心人设。改完保存后自动热刷新。",
+      "type": "string"
+    },
+    "mai_user_prompt_template": {
+      "title": "【提示词】生成 user 模板",
+      "description": "占位符：{history} {speaker_name} {focus_text} {bot_name}",
+      "type": "string"
+    },
+    "mai_banned_phrases": {
+      "title": "【提示词】禁用片段",
+      "description": "回复里出现这些字样会被删掉",
+      "type": "array",
+      "items": {"type": "string"}
+    },
+    "mai_persona_prompt": {
+      "title": "【提示词】人格画像 system",
+      "description": "周期性抽取用户画像时用的 system 提示词",
+      "type": "string"
+    },
+    "mai_persona_user_template": {
+      "title": "【提示词】人格画像 user 模板",
+      "description": "占位符：{conversation}",
+      "type": "string"
+    },
+    "mai_style_expression_prompt": {
+      "title": "【提示词】群风格学习",
+      "description": "占位符：{messages}。JSON 花括号请写成 {{ }}",
+      "type": "string"
+    },
+    "mai_style_jargon_prompt": {
+      "title": "【提示词】黑话挖掘",
+      "description": "占位符：{messages}。JSON 花括号请写成 {{ }}。挖掘结果入库后，生成时按当前消息关键词检索相关条目注入",
+      "type": "string"
+    },
+    "mai_timing_prompt": {
+      "title": "【提示词】主动发言时机",
+      "description": "占位符：{context}。要求模型只输出 reply / wait。仅在接话评分关闭时作为 TimingGate 兜底使用",
+      "type": "string"
+    },
+    "mai_judge_prompt": {
+      "title": "【提示词】接话标签",
+      "description": "占位符：{bot_name} {history} {speaker_name} {focus_text}。只输出布尔标签 JSON；分数由程序按标签+状态惩罚计算",
+      "type": "string"
+    }
+  }
+}

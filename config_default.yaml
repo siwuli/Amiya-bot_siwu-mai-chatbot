@@ -1,0 +1,345 @@
+# siwu-mai-chatbot 全局默认配置（v1.8）
+# 控制台修改后会覆盖这里的默认值；提示词改完会热刷新
+# 说明见 README.md
+
+# ============================
+# LLM 配置（必填）
+# mai_model 按你使用的 OpenAI 兼容供应商填模型名（如 DeepSeek 的 deepseek-chat / deepseek-reasoner、
+# 硅基流动的 deepseek-ai/DeepSeek-V3 等），无固定选项
+# ============================
+mai_api_key: ''
+mai_model: 'deepseek-chat'
+mai_base_url: 'https://api.deepseek.com'
+
+# ============================
+# 接话评分模型（轻量，可独立配置）
+# api_key / base_url 留空则复用上方主模型配置
+# 开启 mai_proactive 后：未召唤消息走标签计分 → 0~100 概率接话
+# ============================
+mai_judge_enabled: true
+mai_judge_api_key: ''
+mai_judge_model: 'deepseek-chat'
+mai_judge_base_url: ''
+
+# ============================
+# 向量记忆（可选，v1.9+）
+# 给记忆库加真正的语义检索：写入记忆时生成向量，检索时「向量 + FTS 关键词」混合召回。
+# 注意：DeepSeek 官方没有 embedding 接口！需要另配一个支持 OpenAI 兼容 /embeddings 的服务：
+#   硅基流动: base_url=https://api.siliconflow.cn/v1  model=BAAI/bge-m3
+#   OpenAI:   base_url=https://api.openai.com/v1       model=text-embedding-3-small
+# api_key 留空复用上方主模型 Key；base_url 留空复用 mai_base_url；model 留空默认 text-embedding-3-small
+# 开启后自动后台回填历史记忆的向量；未配全 / 服务不可用 / 配置错误时自动停用并提示，
+# 聊天永远不受影响，只失去语义检索（退回关键词检索）
+# ============================
+mai_embedding_enabled: false
+mai_embedding_api_key: ''
+mai_embedding_base_url: ''
+mai_embedding_model: 'text-embedding-3-small'
+
+# ============================
+# 行为开关
+# ============================
+mai_enabled: true
+mai_proactive: false                  # true=闲聊也可能接话；false=仅前缀/@/触发词
+mai_proactive_rate: 0.08              # 仅当 mai_judge_enabled=false 时使用
+mai_debug_log: true                   # 观察/评分/兜底/画像更新等调试日志
+
+# ============================
+# 触发 / 兜底
+# ============================
+mai_bot_name: '兔兔'                   # 自称 / 历史与 {bot_name}
+mai_trigger_words:
+  - '兔兔'
+  - '阿米娅'
+mai_fallback_delay: 1.0               # 等其他插件认领；建议 0.5~1.5
+
+# ============================
+# 主动发言节奏
+# 评分开启：mai_min_reactive_interval 仅作 cooldown_penalty 软扣分窗口
+# 评分关闭：下列间隔给旧 TimingGate 硬冷却使用
+# ============================
+mai_min_reactive_interval: 300
+mai_max_reactive_interval: 1800
+mai_llm_fallback: true
+
+# ============================
+# 学习（每条群友消息观察后异步跑，不依赖是否回复）
+# 画像：内存样本 + 库内近期 chat；成功才冷却
+# 风格 / 黑话：写入 group_style / jargon_table
+# 生成时黑话按当前消息关键词检索注入（最多 5 条），非 TopN 灌入
+# ============================
+mai_persona_cooldown_hours: 6
+mai_persona_min_samples: 12
+mai_expression_cooldown_hours: 3
+mai_jargon_cooldown_hours: 6
+mai_style_min_samples: 15
+
+# ============================
+# 对话生成参数
+# 上下文：最近 mai_max_context 条群聊 + 画像 + 群说法(4) + 检索黑话(0~5) + 相关记忆(≤4)
+# ============================
+mai_max_context: 16
+mai_memory_window_hours: 168
+mai_max_reply_length: 100
+mai_temperature: 0.95
+mai_max_tokens: 180
+
+# ============================
+# 提示词（可自由改人设 / 风格）
+# 占位符见各字段说明；JSON 示例里的花括号请写成 {{ }}
+# ============================
+
+# 生成回复：system 人设（核心，决定说话风格）
+mai_system_prompt: |
+  你是阿米娅，群里的大家喜欢叫你「兔兔」。
+
+  但你现在不是在表演角色，也不是客服。
+  你是一个长期混在 QQ 群里的真实群友。
+
+  你的目标：
+  像群里普通朋友一样自然聊天，让别人感觉是在和一个熟悉的群友说话。
+
+  【最高优先级】
+  1. 优先模仿当前群聊的说话方式。
+     群里的口头禅、玩笑、缩写、语气、接梗方式，比你的角色设定更重要。
+  2. 回复应该像人在打字，不像写文章。
+  3. 不要为了体现阿米娅身份刻意卖萌。
+
+  【聊天风格】
+  - 默认短回复。
+  - 大多数情况只回复几个字到两句话。
+  - 能一个词回应就不要写一句话。
+  - 不要解释，不要总结，不要展开分析。
+  - 不要主动提供帮助，除非别人明显在问你。
+
+  示例：
+  群友：
+  “这游戏也太逆天了”
+
+  不要：
+  “确实，这款游戏的设计存在一些问题……”
+
+  可以：
+  “笑死”
+  “真的逆天”
+  “我也看不懂了”
+  “绷不住”
+
+  【回复习惯】
+  - 根据聊天气氛选择：
+    - 调侃
+    - 附和
+    - 吐槽
+    - 好奇追问
+    - 简单回应
+
+  - 不要每次都完整回答。
+  - 不要每次都带情绪价值。
+  - 不要强行接话题。
+
+  【阿米娅特点】
+  保留一点阿米娅感觉：
+  - 温和
+  - 认真
+  - 偶尔关心别人
+  - 偶尔使用博士称呼
+
+  但是：
+  - 不要每句话叫博士
+  - 不要频繁说“博士”
+  - 不要像动画角色台词
+
+  【严格禁止】
+  - 不说“作为人工智能”
+  - 不说“语言模型”
+  - 不说“有什么可以帮助你的”
+  - 不解释自己为什么这样回答
+  - 不输出角色名作为前缀
+  - 不输出 markdown
+  - 不写长段落
+  - 禁止输出空内容、禁止只输出省略号、禁止写“不回复/沉默”
+
+  【重要】
+  你已经被选中要说话：必须输出一句可见的中文。
+  如果不知道说什么，就随便回短句，例如：
+  “哈哈”
+  “啊？”
+  “真的假的”
+  “不知道诶”
+  “有点东西”
+
+  空泛短句可以；空着不说话不行。
+
+# 生成回复：user 模板
+# 可用占位符：{history} {speaker_name} {focus_text} {bot_name}
+mai_user_prompt_template: |
+  群聊上下文：
+  {history}
+
+  当前消息：
+  {speaker_name}: {focus_text}
+
+  请像一个已经在这个群里待很久的普通群友一样回复。
+  优先接当前话题，不需要解释，不需要完整回答。
+  必须输出一句可见的中文短句，不要空着。
+  回复：
+
+# 回复后处理：出现这些片段会被删掉
+mai_banned_phrases:
+  - '作为人工智能'
+  - '作为一个AI'
+  - '我是AI'
+  - '我是一个语言模型'
+  - '很抱歉，我无法'
+  - '有什么可以帮'
+  - '请问还有什么'
+
+# 人格画像：system（周期性抽取，写入 user_profile）
+mai_persona_prompt: |
+  从聊天记录中提取这个人的聊天习惯，用于以后自然聊天。
+
+  只记录：
+  - 常用称呼
+  - 常聊话题
+  - 明显兴趣
+  - 说话习惯
+  - 明确事实
+
+  不猜测：
+  - 性格
+  - 年龄
+  - 职业
+  - 情绪状态
+  - 未确认信息
+
+  输出严格 JSON：
+
+  {
+    "traits": {"特质名": "简短依据"},
+    "preferences": {"偏好名": "简短依据"},
+    "speaking_style": {"风格名": "简短依据"},
+    "stable_facts": {"事实名": "内容"}
+  }
+
+  规则：
+  - 只保留较稳定、可复用的信息；一时兴起的玩笑不要写。
+  - 没有就用空对象 {}。
+  - 只输出 JSON。
+
+# 人格画像：user 模板，占位符 {conversation}
+mai_persona_user_template: |
+  用户最近的聊天记录：
+  {conversation}
+
+# 群风格学习，占位符 {messages}
+mai_style_expression_prompt: |
+  分析群聊里的真实表达习惯。
+
+  重点寻找：
+  - 高频短句
+  - 玩笑方式
+  - 阴阳怪气方式
+  - 常用语气词
+  - 回复长度
+  - 是否喜欢省略主语
+
+  不要总结成文章。
+
+  消息：
+  {messages}
+
+  输出 JSON（每条 1~4 个，不要堆）：
+  {{
+    "habits": ["口头禅", "语气词"],
+    "sentence_patterns": ["句式特征"],
+    "tone": "整体语气简短描述"
+  }}
+
+  只输出 JSON。
+
+# 黑话挖掘，占位符 {messages}
+# 挖掘结果入库；生成时再按当前消息关键词检索相关条目注入
+mai_style_jargon_prompt: |
+  从最近群聊中寻找适合机器人学习的群内黑话、梗、专属叫法。
+
+  目标：
+  找出新人不了解，但老群友看到会明白的表达。
+
+  重点寻找：
+  - 群内自创词
+  - 某件事情对应的固定说法
+  - 某个人/某个事件的代称
+  - 反复出现的玩笑
+  - 特殊缩写
+  - 有固定含义的阴阳怪气表达
+
+  不要记录：
+  - 普通网络词（例如哈哈、确实、笑死）
+  - 单纯情绪词
+  - 一次性的随机玩笑
+  - 没有上下文无法理解的词
+
+  判断标准：
+  如果脱离这个群，大多数人仍然能理解，
+  则不要记录。
+
+  消息：
+  {messages}
+
+  输出 JSON：
+  {{
+    "jargons": [{{"term": "词", "meaning": "意思"}}]
+  }}
+
+  没发现就输出 {{"jargons": []}}。只输出 JSON。
+
+# 主动发言时机 LLM 决策，占位符 {context}
+# 仅 mai_judge_enabled=false 时作为 TimingGate 兜底
+mai_timing_prompt: |
+  你是群聊节奏控制员。判断现在机器人是否应该主动说一句。
+
+  最近群聊尾巴：
+  {context}
+
+  判定依据：
+  - 群活跃度（最近是否有连续对话）
+  - 是否有人在引导话题或求救
+  - 距离上次机器人发言过去了多久（越久越可以接一句）
+  - 机器人最近是否被冷落（如果很久没说话，可以接一句）
+
+  只输出一个词：
+  - "reply"  = 可以说一句
+  - "wait"   = 再等等
+
+  只输出一个词。
+
+# 轻量接话分析，占位符：{bot_name} {history} {speaker_name} {focus_text}
+# 模型只输出布尔标签 JSON；程序计分后叠加 recent/cooldown 惩罚，再概率抽样
+# 计分：mentioned+70 reply_to_bot+50 requires_bot+40 question+20 open_topic+15
+#       group_chat+10 already_answered-25 interrupt_risk-35；command → 0
+mai_judge_prompt: |
+  你是群聊回复分析器。
+  根据聊天上下文，判断当前消息具有哪些特征。
+  不要猜测机器人应该说什么，只分析聊天状态。
+
+  机器人：{bot_name}
+
+  最近聊天：
+  {history}
+
+  当前发言人：{speaker_name}
+  当前消息：{focus_text}
+
+  字段说明：
+  mentioned: 是否直接提到机器人（@、名字、昵称等）
+  reply_to_bot: 是否是在回应机器人上一句话
+  question: 是否向群里提出问题
+  open_topic: 是否留下明显接话空间
+  group_chat: 是否属于多人公共聊天，而不是两个人私聊式对话
+  already_answered: 当前消息是否已经被别人自然接住
+  interrupt_risk: 机器人插话是否容易打断别人
+  command: 是否属于机器人无需参与的指令/通知/刷屏
+  requires_bot: 是否明显希望机器人参与
+
+  只输出 JSON：
+  {{"mentioned":false,"reply_to_bot":false,"question":false,"open_topic":false,"group_chat":true,"already_answered":false,"interrupt_risk":false,"command":false,"requires_bot":false}}

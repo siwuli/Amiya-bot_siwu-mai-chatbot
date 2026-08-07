@@ -1,0 +1,28 @@
+# ===== Python =====
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+.venv/
+venv/
+
+# ===== 构建产物 =====
+build/
+dist/
+*.zip
+
+# ===== 运行时数据（聊天记忆库等，勿提交） =====
+data/
+*.db
+*.db-wal
+*.db-shm
+
+# ===== 日志 =====
+*.log
+
+# ===== IDE / 系统 =====
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
