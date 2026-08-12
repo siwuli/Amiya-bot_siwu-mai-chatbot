@@ -399,6 +399,14 @@ class MaiCore:
     def mark_replied(self, group_id: str):
         self.timing._last_reply[group_id] = time.time()
 
+    def track_message(self, group_id: str):
+        """记录一条消息时间，供主动发言的活跃度估算使用。
+
+        由消息观察路径统一调用，judge / legacy 两条发言路径共享同一份
+        密度统计，避免各自记录导致的偏差。
+        """
+        self.timing.track_message(group_id)
+
     async def enter_followup(self, group_id: str, bot_user_id: Optional[str] = None):
         """触发回复成功后开启对话窗口：窗口内别人继续说话，兔兔会直接续聊。"""
         if bot_user_id:

@@ -74,6 +74,14 @@ class TimingGate:
         cutoff = now - 600
         self._group_msg_times[group_id] = [t for t in times if t > cutoff][-self._max_track:]
 
+    def track_message(self, group_id: str):
+        """公共入口：记录一条消息时间用于活跃度估算。
+
+        由外部（消息观察路径）统一调用，保证 judge / legacy 各路径的
+        密度统计一致，且不会重复计数。
+        """
+        self._track_message(group_id)
+
     def _msg_density_per_min(self, group_id: str) -> float:
         """估算最近 5 分钟的消息密度（条/分钟）"""
         times = self._group_msg_times.get(group_id, [])
@@ -95,7 +103,6 @@ class TimingGate:
         MaiCore.mark_replied 记录，避免“判定命中但被其他插件抢走/发送失败”
         却仍然进入冷却。
         """
-        self._track_message(group_id)
         now = time.time()
         last = self._last_reply.get(group_id, 0)
         elapsed = now - last

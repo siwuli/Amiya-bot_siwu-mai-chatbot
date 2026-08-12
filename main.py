@@ -24,7 +24,7 @@ curr_dir = os.path.dirname(os.path.abspath(__file__))
 
 bot = AmiyaBotPluginInstance(
     name='兔兔 - 智能聊天',
-    version='1.11.0',
+    version='1.12.0',
     plugin_id='siwu-mai-chatbot',
     plugin_type='functional',
     description='明日方舟阿米娅人设的群聊智能体。前缀/@召唤，评分接话，画像/黑话学习与检索，不抢其他插件。',
@@ -329,11 +329,11 @@ async def _send_mai_reply(data: Message, source: str = ''):
         _mai_log(f'发送回复 group={group_id} [{i + 1}/{len(replies)}] len={len(text)} text={_short(text, 60)}')
         await data.send(Chain(data, at=False).text(text))
 
-    # 被召唤触发的回复 → 开启对话窗口；续聊 → 计数
+    # 被召唤 / 主动发言触发的回复 → 开启对话窗口（窗口内别人继续说话会直接续聊）；续聊 → 计数
     try:
         if is_followup:
             core.followup_replied(group_id)
-        elif str(source).startswith('addressed'):
+        elif str(source).startswith('addressed') or str(source) in ('judge', 'legacy'):
             await core.enter_followup(group_id)
     except Exception as e:
         log.warning(f'[Mai] 对话窗口更新失败: {e}')
@@ -432,6 +432,11 @@ async def _mai_observe(data: Message, _):
         return
 
     core.observe_message(group_id, user_id, nickname, observe_text)
+    # 统一记录消息时间：主动发言的活跃度估算依赖它（judge / legacy 共用一份）
+    try:
+        core.track_message(group_id)
+    except Exception:
+        pass
     # 画像/风格/黑话学习挂在观察后：此前只在成功回复后触发，未召唤时永远不写画像
     _spawn_bg(core.on_message_post(group_id, user_id, nickname, observe_text))
 
