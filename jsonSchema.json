@@ -114,6 +114,22 @@
       "maximum": 5,
       "default": 1.0
     },
+    "mai_followup_window_seconds": {
+      "title": "对话续聊窗口(秒)",
+      "description": "被召唤回复后进入对话窗口，窗口内别人继续说话兔兔会直接续聊（不评分）。0 = 关闭续聊。建议 60~180",
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 600,
+      "default": 120
+    },
+    "mai_followup_max_turns": {
+      "title": "续聊最大轮数",
+      "description": "对话窗口内最多续聊几轮，防止没人理也无限接话",
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 20,
+      "default": 4
+    },
     "mai_min_reactive_interval": {
       "title": "最小主动间隔(秒)",
       "description": "评分开启时：用作 cooldown_penalty 软扣分衰减窗口（不硬拦）。评分关闭时：旧版 TimingGate 硬间隔",
@@ -220,7 +236,7 @@
     },
     "mai_user_prompt_template": {
       "title": "【提示词】生成 user 模板",
-      "description": "占位符：{history} {speaker_name} {focus_text} {bot_name}",
+      "description": "占位符：{history} {speaker_name} {focus_text} {bot_name}。模型可多行输出：一行一条短消息，最多 3 行；一句就只输出一行",
       "type": "string"
     },
     "mai_banned_phrases": {

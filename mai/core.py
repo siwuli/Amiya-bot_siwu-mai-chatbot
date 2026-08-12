@@ -30,6 +30,10 @@ class MaiCore:
     MAX_MSG_RECORD_LEN = 240
     # 只有看起来「值得记住」的消息才落库，避免记忆=聊天流水账
     MEMORABLE_MIN_LEN = 8
+    # 触发回复后的“对话窗口”：窗口内别人继续说话，兔兔会直接续聊
+    FOLLOWUP_WINDOW_SECONDS = 120
+    # 续聊最多追加几轮，防止没人理也无限接话
+    FOLLOWUP_MAX_TURNS = 4
 
     def __init__(
         self,
@@ -114,6 +118,10 @@ class MaiCore:
         self._history: Dict[str, List[Dict]] = {}
         self._lock = Lock()
         self.bot_user_id = 'bot'
+
+        # 对话续聊状态：group_id -> (窗口到期时间, 已续聊轮数)
+        self._followup: Dict[str, tuple] = {}
+        self._followup_lock = Lock()
 
         # 启动后台回填：给历史记忆（含 persona 写的 fact）补向量
         if self.embedder is not None:
@@ -238,16 +246,27 @@ class MaiCore:
         }
         with self._lock:
             hist = self._history[group_id]
-            # 去重：发送后平台回传自己的消息时避免双记
-            if hist:
-                last = hist[-1]
-                if (
-                    last.get('is_bot') == msg['is_bot']
-                    and str(last.get('user_id')) == msg['user_id']
-                    and (last.get('message') or '') == text
-                    and now - float(last.get('time') or 0) < 8
-                ):
-                    return
+            if is_bot:
+                # 连发多条时：生成时已写一遍，平台回传再写一遍 → 按「同人同内容近期内只记一次」去重
+                for m in reversed(hist[-8:]):
+                    if (
+                        m.get('is_bot')
+                        and str(m.get('user_id')) == msg['user_id']
+                        and (m.get('message') or '') == text
+                        and now - float(m.get('time') or 0) < 10
+                    ):
+                        return
+            else:
+                # 群友消息：只防发送后平台回传自己的消息时双记
+                if hist:
+                    last = hist[-1]
+                    if (
+                        last.get('is_bot') == msg['is_bot']
+                        and str(last.get('user_id')) == msg['user_id']
+                        and (last.get('message') or '') == text
+                        and now - float(last.get('time') or 0) < 8
+                    ):
+                        return
             hist.append(msg)
             if len(hist) > 80:
                 self._history[group_id] = hist[-80:]
@@ -380,15 +399,50 @@ class MaiCore:
     def mark_replied(self, group_id: str):
         self.timing._last_reply[group_id] = time.time()
 
+    async def enter_followup(self, group_id: str, bot_user_id: Optional[str] = None):
+        """触发回复成功后开启对话窗口：窗口内别人继续说话，兔兔会直接续聊。"""
+        if bot_user_id:
+            self.set_bot_user_id(bot_user_id)
+        with self._followup_lock:
+            self._followup[group_id] = (time.time() + self.FOLLOWUP_WINDOW_SECONDS, 0)
+
+    async def in_followup_window(self, group_id: str, bot_user_id: Optional[str] = None) -> bool:
+        """窗口是否开启且还有续聊配额；过期自动清理。"""
+        if bot_user_id:
+            self.set_bot_user_id(bot_user_id)
+        with self._followup_lock:
+            entry = self._followup.get(group_id)
+            if not entry:
+                return False
+            deadline, turns = entry
+            if time.time() > deadline or turns >= self.FOLLOWUP_MAX_TURNS:
+                self._followup.pop(group_id, None)
+                return False
+            return True
+
+    def followup_replied(self, group_id: str):
+        """续聊发过一次回复后调用：延长窗口并计数，防止无限接话。"""
+        with self._followup_lock:
+            entry = self._followup.get(group_id)
+            if not entry:
+                return
+            deadline, turns = entry
+            turns += 1
+            if turns >= self.FOLLOWUP_MAX_TURNS:
+                self._followup.pop(group_id, None)
+            else:
+                self._followup[group_id] = (time.time() + self.FOLLOWUP_WINDOW_SECONDS, turns)
+
     async def generate_reply(
         self,
         user_id: str,
         group_id: str,
         focus_text: str = '',
         speaker_name: str = '群友',
-    ) -> str:
+    ) -> List[str]:
+        """生成 1~3 条短消息（条数由模型决定），并全部写入历史与记忆。"""
         recent = self.get_recent_messages(group_id)
-        reply = await self.generator.generate(
+        replies = await self.generator.generate(
             user_id,
             group_id,
             recent,
@@ -396,7 +450,9 @@ class MaiCore:
             focus_text=focus_text,
             speaker_name=speaker_name,
         )
-        if reply:
+        for reply in replies:
+            if not reply:
+                continue
             # 必须写入历史：评分靠 is_bot / reply_to_bot 识别自己说过什么
             self.record_message(group_id, self.bot_user_id, self.BOT_NAME, reply, is_bot=True)
             self.mark_replied(group_id)
@@ -412,7 +468,7 @@ class MaiCore:
                 self._spawn(self._embed_chunk(group_id, content))
             except Exception:
                 pass
-        return reply
+        return [r for r in replies if r]
 
     async def on_message_post(self, group_id: str, user_id: str, nickname: str, message: str):
         """每条群友消息后异步学习（画像 / 群风格+黑话），不依赖是否回复。"""

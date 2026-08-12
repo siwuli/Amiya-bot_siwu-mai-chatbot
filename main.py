@@ -24,7 +24,7 @@ curr_dir = os.path.dirname(os.path.abspath(__file__))
 
 bot = AmiyaBotPluginInstance(
     name='兔兔 - 智能聊天',
-    version='1.10.0',
+    version='1.11.0',
     plugin_id='siwu-mai-chatbot',
     plugin_type='functional',
     description='明日方舟阿米娅人设的群聊智能体。前缀/@召唤，评分接话，画像/黑话学习与检索，不抢其他插件。',
@@ -101,6 +101,7 @@ def _config_signature() -> str:
         'mai_expression_cooldown_hours', 'mai_jargon_cooldown_hours', 'mai_style_min_samples',
         'mai_temperature', 'mai_max_tokens', 'mai_max_reply_length',
         'mai_memory_window_hours', 'mai_max_context', 'mai_fallback_delay',
+        'mai_followup_window_seconds', 'mai_followup_max_turns',
         'mai_judge_enabled', 'mai_judge_api_key', 'mai_judge_model', 'mai_judge_base_url',
         'mai_embedding_enabled', 'mai_embedding_api_key', 'mai_embedding_base_url', 'mai_embedding_model',
         'mai_debug_log', 'mai_proactive', 'mai_proactive_rate',
@@ -186,6 +187,9 @@ def _build_core() -> MaiCore:
         bot_name=bot_name,
         max_history=int(_cfg('mai_max_context', 16)),
     )
+    # 对话续聊窗口：被召唤回复后，窗口内别人继续说话会直接续聊
+    core.FOLLOWUP_WINDOW_SECONDS = max(0, int(_cfg('mai_followup_window_seconds', 120)))
+    core.FOLLOWUP_MAX_TURNS = max(1, int(_cfg('mai_followup_max_turns', 4)))
     j_model = judge_model or model
     j_url = judge_base_url or base_url
     _mai_log(
@@ -278,7 +282,7 @@ def _other_plugin_claimed(data: Message) -> bool:
         return False
 
 
-async def _send_mai_reply(data: Message):
+async def _send_mai_reply(data: Message, source: str = ''):
     original, body, prefix = _message_texts(data)
     group_id = str(data.channel_id) if data.channel_id else 'dm'
     user_id = str(data.user_id) if data.user_id else 'unknown'
@@ -300,7 +304,7 @@ async def _send_mai_reply(data: Message):
 
     _mai_log(f'开始生成回复 group={group_id} user={nickname}({user_id}) focus={_short(focus)}')
     try:
-        reply = await core.generate_reply(
+        replies = await core.generate_reply(
             user_id=user_id,
             group_id=group_id,
             focus_text=focus,
@@ -313,12 +317,26 @@ async def _send_mai_reply(data: Message):
     meta = getattr(getattr(core, 'generator', None), 'last_empty_meta', None) or {}
     if meta.get('used_fallback'):
         _mai_log(f'生成空结果已兜底 meta={meta}', force=True)
-    elif not reply:
+    elif not replies:
         log.warning(f'[Mai] 生成结果为空 meta={meta}')
         return
 
-    _mai_log(f'发送回复 group={group_id} len={len(reply)} text={_short(reply, 60)}')
-    await data.send(Chain(data, at=False).text(reply))
+    # 连发多条：第一条立即发送，后续每条间隔 1~1.5s，模拟真人分段说话
+    is_followup = str(source).startswith('followup')
+    for i, text in enumerate(replies):
+        if i > 0:
+            await asyncio.sleep(1.0 + random.random() * 0.5)
+        _mai_log(f'发送回复 group={group_id} [{i + 1}/{len(replies)}] len={len(text)} text={_short(text, 60)}')
+        await data.send(Chain(data, at=False).text(text))
+
+    # 被召唤触发的回复 → 开启对话窗口；续聊 → 计数
+    try:
+        if is_followup:
+            core.followup_replied(group_id)
+        elif str(source).startswith('addressed'):
+            await core.enter_followup(group_id)
+    except Exception as e:
+        log.warning(f'[Mai] 对话窗口更新失败: {e}')
 
 
 def _spawn_bg(coro):
@@ -375,7 +393,7 @@ async def _fallback_check_and_reply(data: Message, source: str = 'unknown'):
 
     _mai_log(f'兜底无人认领，进入生成 source={source}')
     try:
-        await _send_mai_reply(data)
+        await _send_mai_reply(data, source=source)
     except Exception as e:
         log.warning(f'[Mai] 兜底回复失败: {e}')
     finally:
@@ -429,6 +447,18 @@ async def _mai_observe(data: Message, _):
     )
 
     # 主动发言 / 轻量评分接话：被召唤以外的消息
+    # 对话续聊窗口优先：刚被召唤回复过，窗口内别人继续说话 → 直接续聊，不评分
+    if not addressed:
+        try:
+            in_window = await core.in_followup_window(group_id, bot_uid)
+        except Exception as e:
+            in_window = False
+            log.warning(f'[Mai] 对话窗口判断失败: {e}')
+        if in_window:
+            _mai_log(f'对话窗口内续聊 group={group_id} user={nickname}({user_id}) text={_short(observe_text)}')
+            _schedule_fallback(data, source='followup')
+            return
+
     if not addressed and proactive:
         observe_for_reply = original or body
         should_try = False

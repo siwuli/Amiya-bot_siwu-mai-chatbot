@@ -13,7 +13,7 @@ DEFAULT_SYSTEM_PROMPT = """你是阿米娅，群里大家都叫你「兔兔」�
 
 说话规则（必须遵守）：
 1. 像普通女孩子日常聊天：口语、自然、有一点情绪，不要公文腔。
-2. 绝大多数回复 1~2 句，最多 3 句；别写长段、别列点、别用 markdown。
+2. 回复通常 1~2 句；觉得需要时可以连发多条短消息，每条**单独一行**，最多 3 行；别写长段、别列点、别用 markdown。
 3. 直接回应当前这句话和最近几句上下文，不要复述人设，不要自我介绍。
 4. 称呼对方可用「博士」或自然地用「你」，看气氛；不要每句都叫博士。
 5. 可以吐槽、接梗、反问；不懂就坦诚说不熟。
@@ -25,7 +25,8 @@ DEFAULT_SYSTEM_PROMPT = """你是阿米娅，群里大家都叫你「兔兔」�
 DEFAULT_USER_PROMPT_TEMPLATE = (
     '最近群聊：\n{history}\n\n'
     '现在轮到你接话。{speaker_name}刚刚说：{focus_text}\n'
-    '请用{bot_name}的口吻直接回复一句或两句可见中文，不要空着。'
+    '请用{bot_name}的口吻回复：可以只回一条，也可以连发 2~3 条短消息'
+    '（每条单独一行，最多 3 行；一句就只输出一行）。不要空着。'
 )
 
 DEFAULT_BANNED_PHRASES = [
@@ -49,6 +50,15 @@ FALLBACK_REPLIES = [
     '懂了',
     '行吧',
 ]
+
+# 模型用这些表示“闭嘴”，视为空内容
+SILENCE_MARKERS = {
+    '（沉默）', '(沉默)', '沉默', '不回复', '不说话', '……', '...', '…',
+    '（不回复）', '(不回复)', '无', '无。', '/', '-',
+}
+
+# 一次最多连发几条短消息
+MAX_REPLY_LINES = 3
 
 
 class ChatGenerator:
@@ -184,7 +194,12 @@ class ChatGenerator:
         bot_user_id: str = 'bot',
         focus_text: str = '',
         speaker_name: str = '群友',
-    ) -> str:
+    ) -> List[str]:
+        """生成回复。
+
+        返回 1~3 条短消息列表（条数由模型自己决定：可以只回一句，也可以连发多条，
+        每条单独一行）。空列表表示没有可用回复。
+        """
         if not focus_text and recent_messages:
             focus_text = recent_messages[-1].get('message', '')
 
@@ -223,20 +238,22 @@ class ChatGenerator:
             {'role': 'user', 'content': user_prompt},
         ]
 
-        reply = await self._call_once(messages, self._temperature)
-        if not reply:
+        lines = self._split_lines(await self._call_once(messages, self._temperature))
+        if not lines:
             # 空内容常见于：内容过滤 / 模型“选择沉默” / 接口偶发空 content
-            reply = await self._call_once(
-                messages,
-                max(0.3, self._temperature - 0.25),
-                force_line=True,
+            lines = self._split_lines(
+                await self._call_once(
+                    messages,
+                    max(0.3, self._temperature - 0.25),
+                    force_line=True,
+                )
             )
 
-        if not reply:
-            reply = random.choice(FALLBACK_REPLIES)
+        if not lines:
+            lines = [random.choice(FALLBACK_REPLIES)]
             self.last_empty_meta = getattr(self, 'last_empty_meta', {}) or {}
             self.last_empty_meta['used_fallback'] = True
-        return reply
+        return lines
 
     async def _call_once(
         self,
@@ -275,29 +292,46 @@ class ChatGenerator:
                     max_tokens=self._max_tokens,
                 )
                 self.last_empty_meta = {'raw_len': len(raw or ''), 'force_line': force_line}
-            return self._post_process(raw)
+            return raw or ''
         except Exception as e:
             self.last_empty_meta = {'error': str(e), 'force_line': force_line}
             raise
 
-    def _post_process(self, text: str) -> str:
+    def _split_lines(self, text: str) -> List[str]:
+        """把模型输出拆成 1~3 条短消息。
+
+        - 模型可以输出多行（每行一条），也可以只输出一行（单条回复）
+        - 逐行做后处理与截断，保证每条都是完整可见的短句
+        """
         text = strip_thinking(text or '')
         text = text.strip()
+        if not text:
+            return []
+
+        lines = []
+        for raw_line in text.split('\n'):
+            line = self._clean_line(raw_line)
+            if line:
+                lines.append(line)
+            if len(lines) >= MAX_REPLY_LINES:
+                break
+        return lines
+
+    def _clean_line(self, text: str) -> str:
+        """清理并截断单条消息文本。"""
+        text = (text or '').strip()
         if not text:
             return ''
 
         # 模型有时用「（沉默）」「不回复」表示闭嘴——视为空，走重试/兜底
-        silence = {
-            '（沉默）', '(沉默)', '沉默', '不回复', '不说话', '……', '...', '…',
-            '（不回复）', '(不回复)', '无', '无。', '/', '-',
-        }
-        if text in silence:
+        if text in SILENCE_MARKERS:
             return ''
 
         prefix_pat = rf'^(assistant|{re.escape(self.bot_name)}|阿米娅|Amiya|AI)[:：]\s*'
         text = re.sub(prefix_pat, '', text, flags=re.I)
         text = text.strip().strip('"\'「」『』')
         text = re.sub(r'^[-*•]\s+', '', text, flags=re.M)
+        text = re.sub(r'^\d+[.、)]\s*', '', text, flags=re.M)
         text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)
         text = re.sub(r'`([^`]*)`', r'\1', text)
 
@@ -305,8 +339,8 @@ class ChatGenerator:
             if b and b in text:
                 text = text.replace(b, '')
 
-        text = re.sub(r'\n{2,}', '\n', text).strip()
-        if text in silence:
+        text = text.strip()
+        if not text or text in SILENCE_MARKERS:
             return ''
 
         if len(text) > self._max_length:
