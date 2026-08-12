@@ -154,7 +154,7 @@
     },
     "mai_expression_cooldown_hours": {
       "title": "表达学习冷却(小时)",
-      "description": "群风格学习冷却；观察后异步触发，不依赖是否回复",
+      "description": "表达与黑话已合并为一次调用，冷却取本值与「黑话学习冷却」中较小值；观察后异步触发，不依赖是否回复",
       "type": "integer",
       "minimum": 1,
       "maximum": 168,
@@ -162,7 +162,7 @@
     },
     "mai_jargon_cooldown_hours": {
       "title": "黑话学习冷却(小时)",
-      "description": "黑话挖掘冷却。生成时另按当前消息关键词检索相关黑话注入（最多5条）",
+      "description": "与「表达学习冷却」合并为一次调用，取两者较小值为实际冷却。生成时另按当前消息关键词检索相关黑话注入（最多5条）",
       "type": "integer",
       "minimum": 1,
       "maximum": 168,
@@ -239,14 +239,9 @@
       "description": "占位符：{conversation}",
       "type": "string"
     },
-    "mai_style_expression_prompt": {
-      "title": "【提示词】群风格学习",
-      "description": "占位符：{messages}。JSON 花括号请写成 {{ }}",
-      "type": "string"
-    },
-    "mai_style_jargon_prompt": {
-      "title": "【提示词】黑话挖掘",
-      "description": "占位符：{messages}。JSON 花括号请写成 {{ }}。挖掘结果入库后，生成时按当前消息关键词检索相关条目注入",
+    "mai_style_learn_prompt": {
+      "title": "【提示词】群风格学习+黑话",
+      "description": "占位符：{messages}。表达习惯与黑话合并为一次 LLM 调用提取。JSON 花括号请写成 {{ }}。挖掘结果入库后，生成时按当前消息关键词检索相关条目注入",
       "type": "string"
     },
     "mai_timing_prompt": {

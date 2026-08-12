@@ -65,11 +65,12 @@ mai_llm_fallback: true
 # ============================
 # 学习（每条群友消息观察后异步跑，不依赖是否回复）
 # 画像：内存样本 + 库内近期 chat；成功才冷却
-# 风格 / 黑话：写入 group_style / jargon_table
+# 风格 + 黑话：合并为一次 LLM 调用，写入 group_style / jargon_table
 # 生成时黑话按当前消息关键词检索注入（最多 5 条），非 TopN 灌入
 # ============================
 mai_persona_cooldown_hours: 6
 mai_persona_min_samples: 12
+# 表达 + 黑话已合并为一次调用：冷却取下面两者较小值（默认 3h）
 mai_expression_cooldown_hours: 3
 mai_jargon_cooldown_hours: 6
 mai_style_min_samples: 15
@@ -231,9 +232,10 @@ mai_persona_user_template: |
   用户最近的聊天记录：
   {conversation}
 
-# 群风格学习，占位符 {messages}
-mai_style_expression_prompt: |
-  分析群聊里的真实表达习惯。
+# 群风格学习 + 黑话挖掘（合并为一次 LLM 调用，占位符 {messages}）
+# 覆盖旧版 mai_style_expression_prompt / mai_style_jargon_prompt 两个独立调用
+mai_style_learn_prompt: |
+  从最近群聊里提取有"群友特征"的说话习惯，以及群内专用黑话。
 
   重点寻找：
   - 高频短句
@@ -243,35 +245,8 @@ mai_style_expression_prompt: |
   - 回复长度
   - 是否喜欢省略主语
 
-  不要总结成文章。
-
-  消息：
-  {messages}
-
-  输出 JSON（每条 1~4 个，不要堆）：
-  {{
-    "habits": ["口头禅", "语气词"],
-    "sentence_patterns": ["句式特征"],
-    "tone": "整体语气简短描述"
-  }}
-
-  只输出 JSON。
-
-# 黑话挖掘，占位符 {messages}
-# 挖掘结果入库；生成时再按当前消息关键词检索相关条目注入
-mai_style_jargon_prompt: |
-  从最近群聊中寻找适合机器人学习的群内黑话、梗、专属叫法。
-
-  目标：
+  黑话目标：
   找出新人不了解，但老群友看到会明白的表达。
-
-  重点寻找：
-  - 群内自创词
-  - 某件事情对应的固定说法
-  - 某个人/某个事件的代称
-  - 反复出现的玩笑
-  - 特殊缩写
-  - 有固定含义的阴阳怪气表达
 
   不要记录：
   - 普通网络词（例如哈哈、确实、笑死）
@@ -280,18 +255,20 @@ mai_style_jargon_prompt: |
   - 没有上下文无法理解的词
 
   判断标准：
-  如果脱离这个群，大多数人仍然能理解，
-  则不要记录。
+  如果脱离这个群，大多数人仍然能理解，则不要记录。
 
   消息：
   {messages}
 
   输出 JSON：
   {{
+    "habits": ["口头禅", "语气词"],
+    "sentence_patterns": ["句式特征"],
+    "tone": "整体语气简短描述",
     "jargons": [{{"term": "词", "meaning": "意思"}}]
   }}
 
-  没发现就输出 {{"jargons": []}}。只输出 JSON。
+  没发现就输出空数组。只输出 JSON。
 
 # 主动发言时机 LLM 决策，占位符 {context}
 # 仅 mai_judge_enabled=false 时作为 TimingGate 兜底

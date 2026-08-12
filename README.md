@@ -2,7 +2,7 @@
 
 基于明日方舟 **阿米娅** 人设的 **AmiyaBot** 群聊智能体插件。被前缀 / `@` / 触发词召唤后像真人一样短聊接话，并且**不抢**其他指令插件；可选开启主动模式，在合适的时机像老群友一样自己接话。
 
-> 插件 id：`siwu-mai-chatbot`　当前版本：`1.9.0`
+> 插件 id：`siwu-mai-chatbot`　当前版本：`1.10.0`
 
 ## 特性
 
@@ -43,8 +43,7 @@ python build.py
 | 能力 | 触发 | 说明 |
 |---|---|---|
 | 用户画像 | 样本够且过冷却 | 合并内存样本 + 库内近期 chat；成功才进入冷却 |
-| 群风格 | 群消息够且过冷却 | 写入 `group_style` |
-| 黑话挖掘 | 群消息够且过冷却 | 写入 `jargon_table` |
+| 群风格 + 黑话 | 群消息够且过冷却 | **合并为一次 LLM 调用**，写入 `group_style` / `jargon_table`（v1.10） |
 
 生成回复时，黑话**按当前消息关键词检索**注入（最多 5 条），不再固定灌 TopN：
 
@@ -94,8 +93,7 @@ python build.py
 | `mai_banned_phrases` | 回复后处理删除的套话 | - |
 | `mai_persona_prompt` | 画像提取 system | - |
 | `mai_persona_user_template` | 画像提取 user | `{conversation}` |
-| `mai_style_expression_prompt` | 群风格学习 | `{messages}`（JSON 花括号写成 `{{` `}}`） |
-| `mai_style_jargon_prompt` | 黑话挖掘 | `{messages}` |
+| `mai_style_learn_prompt` | 群风格学习 + 黑话挖掘（一次调用，v1.10；覆盖旧 `mai_style_expression_prompt` / `mai_style_jargon_prompt`） | `{messages}`（JSON 花括号写成 `{{` `}}`） |
 | `mai_timing_prompt` | 主动发言时机（评分关闭时） | `{context}` |
 | `mai_judge_prompt` | 接话特征标签 JSON | `{bot_name}` `{history}` `{speaker_name}` `{focus_text}` |
 
@@ -143,6 +141,7 @@ python build.py
 
 | 版本 | 更新内容 |
 |---|---|
+| `1.10.0` | 轻量化：群风格+黑话学习合并为一次 LLM 调用（冷却取两个旧冷却的较小值）；清理无调用方死代码（`should_reply_passive` / `should_passive_reply` / `match_trigger_word` / `search_graph`）；健壮性：pending 兜底任务设上限并清理已完成项、后台任务异常兜底日志、主动时机判定不再提前写冷却（发言成功后才记录，被抢走/失败不锁冷却） |
 | `1.9.0` | 记忆库新增可选语义检索：OpenAI 兼容 `/embeddings` 生成向量，向量 + FTS 混合召回；自动后台回填历史记忆；未配全/服务异常自动熔断停用，不影响聊天 |
 | `1.8.3` | 自身发言写入 `chat_tail` 并持久化；评分/生成前恢复历史；识别机器人 QQ 回传；改配置重建核心时保留历史与冷却；发送成功后再更新 `last_reply`，`reply_to_bot` 判断更准 |
 | `1.8.2` | 剥离思考过程（`<think>` / `【思考】` 等）；不再把 `reasoning_content` 当可见回复 |

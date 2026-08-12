@@ -24,7 +24,7 @@ curr_dir = os.path.dirname(os.path.abspath(__file__))
 
 bot = AmiyaBotPluginInstance(
     name='兔兔 - 智能聊天',
-    version='1.9.0',
+    version='1.10.0',
     plugin_id='siwu-mai-chatbot',
     plugin_type='functional',
     description='明日方舟阿米娅人设的群聊智能体。前缀/@召唤，评分接话，画像/黑话学习与检索，不抢其他插件。',
@@ -87,7 +87,7 @@ PROMPT_KEYS = [
     'mai_persona_prompt',
     'mai_persona_user_template',
     'mai_style_expression_prompt',
-    'mai_style_jargon_prompt',
+    'mai_style_learn_prompt',
     'mai_timing_prompt',
     'mai_judge_prompt',
 ]
@@ -158,11 +158,14 @@ def _build_core() -> MaiCore:
         user_template=_cfg('mai_persona_user_template', ''),
     )
     core.style_learner.update_config(
-        expression_cooldown=int(_cfg('mai_expression_cooldown_hours', 3)) * 3600,
-        jargon_cooldown=int(_cfg('mai_jargon_cooldown_hours', 6)) * 3600,
+        # 表达 + 黑话合并为一次调用，冷却取两个配置中较小值（表达仍 3h，黑话顺带更勤）
+        group_cooldown=min(
+            int(_cfg('mai_expression_cooldown_hours', 3)) * 3600,
+            int(_cfg('mai_jargon_cooldown_hours', 6)) * 3600,
+        ),
         min_samples=int(_cfg('mai_style_min_samples', 15)),
-        expression_prompt=_cfg('mai_style_expression_prompt', ''),
-        jargon_prompt=_cfg('mai_style_jargon_prompt', ''),
+        # 优先新合并提示词；未配则回退旧「表达」提示词（可能无 jargons 段），最后用内置默认
+        group_prompt=_cfg('mai_style_learn_prompt', '') or _cfg('mai_style_expression_prompt', ''),
     )
     core.generator.update_config(
         temperature=float(_cfg('mai_temperature', 0.95)),
@@ -318,6 +321,37 @@ async def _send_mai_reply(data: Message):
     await data.send(Chain(data, at=False).text(reply))
 
 
+def _spawn_bg(coro):
+    """创建后台任务并吞掉未捕获异常，避免 "Task exception was never retrieved" 刷屏。"""
+    task = asyncio.create_task(coro)
+
+    def _on_done(t):
+        if t.cancelled():
+            return
+        exc = t.exception()
+        if exc:
+            log.warning(f'[Mai] 后台任务异常: {exc}')
+
+    task.add_done_callback(_on_done)
+    return task
+
+
+def _schedule_fallback(data: Message, source: str):
+    """排队兜底回复；限制 pending 数量，避免消息洪峰下无限增长。"""
+    msg_key = getattr(data, 'message_id', None) or id(data)
+    if msg_key in _mai_pending_tasks:
+        return
+    # 清掉已完成的任务，防止 pending 无限增长
+    if len(_mai_pending_tasks) > 100:
+        for k, t in list(_mai_pending_tasks.items()):
+            if t.done():
+                _mai_pending_tasks.pop(k, None)
+    _mai_log(f'排队兜底回复 source={source} msg={msg_key}')
+    _mai_pending_tasks[msg_key] = asyncio.create_task(
+        _fallback_check_and_reply(data, source=source)
+    )
+
+
 async def _fallback_check_and_reply(data: Message, source: str = 'unknown'):
     msg_key = getattr(data, 'message_id', None) or id(data)
     if msg_key in _mai_fallback_done:
@@ -381,7 +415,7 @@ async def _mai_observe(data: Message, _):
 
     core.observe_message(group_id, user_id, nickname, observe_text)
     # 画像/风格/黑话学习挂在观察后：此前只在成功回复后触发，未召唤时永远不写画像
-    asyncio.create_task(core.on_message_post(group_id, user_id, nickname, observe_text))
+    _spawn_bg(core.on_message_post(group_id, user_id, nickname, observe_text))
 
     reason = _address_reason(data)
     addressed = bool(reason)
@@ -427,12 +461,7 @@ async def _mai_observe(data: Message, _):
                 _mai_log(f'旧主动逻辑未过概率 rate={rate} roll={roll:.3f}')
 
         if should_try:
-            msg_key = getattr(data, 'message_id', None) or id(data)
-            if msg_key not in _mai_pending_tasks:
-                _mai_log(f'排队兜底回复 path={path} msg={msg_key}')
-                _mai_pending_tasks[msg_key] = asyncio.create_task(
-                    _fallback_check_and_reply(data, source=path)
-                )
+            _schedule_fallback(data, source=path)
             return
         return
 
@@ -442,9 +471,4 @@ async def _mai_observe(data: Message, _):
 
     # 被召唤：等其他插件；没人要再回
     if addressed:
-        msg_key = getattr(data, 'message_id', None) or id(data)
-        if msg_key not in _mai_pending_tasks:
-            _mai_log(f'召唤排队兜底 reason={reason} msg={msg_key}')
-            _mai_pending_tasks[msg_key] = asyncio.create_task(
-                _fallback_check_and_reply(data, source=f'addressed:{reason}')
-            )
+        _schedule_fallback(data, source=f'addressed:{reason}')

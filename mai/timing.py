@@ -83,27 +83,18 @@ class TimingGate:
         recent = sum(1 for t in times if t > cutoff)
         return recent / 5.0
 
-    async def should_passive_reply(
-        self,
-        group_id: str,
-        text: str,
-        is_at: bool,
-        matches_trigger: bool,
-        bot_nickname: str = '兔兔',
-    ) -> bool:
-        """被动响应：只在被 @ 或触发词时调用。返回 True 表示回复"""
-        if is_at or matches_trigger:
-            self._last_reply[group_id] = time.time()
-            return True
-        return False
-
     async def should_proactive_reply(
         self,
         group_id: str,
         recent_messages: List[Dict],
         bot_user_id: str,
     ) -> bool:
-        """主动发言判断：纯规则优先，LLM 兜底。返回 True 表示说一句"""
+        """主动发言判断：纯规则优先，LLM 兜底。返回 True 表示说一句。
+
+        注意：这里只做判断，不写 last_reply；真正发言成功后由
+        MaiCore.mark_replied 记录，避免“判定命中但被其他插件抢走/发送失败”
+        却仍然进入冷却。
+        """
         self._track_message(group_id)
         now = time.time()
         last = self._last_reply.get(group_id, 0)
@@ -115,7 +106,6 @@ class TimingGate:
 
         # 规则 2：很久没发言 → 主动发言
         if elapsed > self.max_interval:
-            self._last_reply[group_id] = now
             return True
 
         # 规则 3：群里非常冷（密度小于 0.2 条/分钟）→ 静默
@@ -131,7 +121,6 @@ class TimingGate:
         bot_nickname = self.bot_nickname or '兔兔'
         recent_text = ' '.join(m.get('message', '') for m in recent_messages[-3:])
         if bot_nickname in recent_text:
-            self._last_reply[group_id] = now
             return True
 
         # 规则 6：最近 1 分钟内有 2 条以上消息且间隔适中 → 让 LLM 决策
@@ -165,16 +154,3 @@ class TimingGate:
             return 'reply' in decision
         except Exception:
             return False
-
-    @staticmethod
-    def match_trigger_word(text: str, trigger_words: List[str]) -> bool:
-        """含任一触发词即匹配（极简规则）
-
-        是否真的回复由 main.py 的让出词（mai_passive_blacklist）和 @判定决定
-        """
-        if not text or not trigger_words:
-            return False
-        for w in trigger_words:
-            if w and w in text:
-                return True
-        return False

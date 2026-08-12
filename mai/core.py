@@ -337,10 +337,6 @@ class MaiCore:
         self._ensure_group(group_id)
         return list(self._history.get(group_id, []))
 
-    def should_reply_passive(self, group_id: str, text: str, is_at: bool) -> bool:
-        matches = TimingGate.match_trigger_word(text, self.trigger_words)
-        return is_at or matches
-
     async def maybe_proactive_reply(self, group_id: str, bot_user_id: str) -> bool:
         if bot_user_id:
             self.set_bot_user_id(bot_user_id)
@@ -419,12 +415,11 @@ class MaiCore:
         return reply
 
     async def on_message_post(self, group_id: str, user_id: str, nickname: str, message: str):
-        """每条群友消息后异步学习（画像 / 群风格 / 黑话），不依赖是否回复。"""
+        """每条群友消息后异步学习（画像 / 群风格+黑话），不依赖是否回复。"""
         if self.is_bot_user(user_id):
             return
         recent = self.get_recent_messages(group_id)
-        asyncio.create_task(self.style_learner.learn_expressions(group_id, recent))
-        asyncio.create_task(self.style_learner.mine_jargons(group_id, recent))
+        asyncio.create_task(self.style_learner.learn_group(group_id, recent))
         asyncio.create_task(self._extract_persona_safe(user_id))
 
     async def _extract_persona_safe(self, user_id: str):

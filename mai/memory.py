@@ -453,22 +453,6 @@ class A_Memorix:
                 break
         return contents[:limit]
 
-    def search_graph(self, user_id: str, entity: str, limit: int = 10) -> List[Dict]:
-        conn = self._get_conn()
-        cursor = conn.cursor()
-        cursor.execute('''
-            SELECT entity, relation, target, weight, evidence
-            FROM memory_graph
-            WHERE user_id = ? AND (entity LIKE ? OR target LIKE ?)
-            ORDER BY weight DESC LIMIT ?
-        ''', (user_id, f'%{entity}%', f'%{entity}%', limit))
-        rows = cursor.fetchall()
-        conn.close()
-        return [
-            {'entity': r[0], 'relation': r[1], 'target': r[2], 'weight': r[3], 'evidence': r[4]}
-            for r in rows
-        ]
-
     def get_profile(self, user_id: str) -> Dict[str, Any]:
         conn = self._get_conn()
         cursor = conn.cursor()
